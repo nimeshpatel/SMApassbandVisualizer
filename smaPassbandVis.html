@@ -1,9 +1,10 @@
-<!DOCTYPE html>
-<head>
 <title>SMA Passband Visualizer</title>
 <!-- Nimesh Patel, npatel[at]cfa.harvard.edu -->
-<!-- Completely re-written Passband Visualizer for SWARM -->
-<!-- Version 1.25 14 June 2014-->
+
+<!-- Version 5.00 13 Jul 2016: no more ASIC! SWARM with fullspeed -->
+<!-- correlator modes: Single Rx, Two Rx / Full Polarization modes -->
+
+<!-- removed velocity input until bug is fixed 8 aug 2016. -->
 
 <script src="jquery-1.11.0.min.js"></script>
 <script src="./flot/excanvas.min.js"></script>
@@ -11,12 +12,19 @@
 <script src="./flot/jquery.flot.selection.js"></script>
 <script src="./flot/jquery.flot.navigate.js"></script>
 <script src="numericInput.min.js"></script>
+
+<!--
+<script src="html2canvas.js"></script>
+<script src="base64.js"></script>
+<script src="canvas2image.js"></script>
+<script src="jquery.flot.saveAsImage.js"></script>
+-->
  
 <!-- CSS -->
 
 <style type="text/css">
 
-body {
+div#smaPBV2 {
 background-color:#ffffff;
 margin-left:10px;
 font-family: helvetica;
@@ -26,6 +34,11 @@ header img {
 float:left;
 }
 header h1 {
+}
+
+.cmdfont {
+font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', 'Lucida Typewriter', monospace;
+font-size: 18;
 }
 
 .xaxisLabel {
@@ -60,10 +73,8 @@ font-size: smaller;
 margin-left:10%;
 margin-right:10%;
 }
-</style>
 
 
-<style type="text/css">
     #usbplot .button {
         position: absolute;
         cursor: pointer;
@@ -78,9 +89,7 @@ margin-right:10%;
         padding-left: 50px;
         font-size: smaller;
      }
-</style>
 
-<style type="text/css">
 #overview {
     width: 900px;
     height: 100px;
@@ -104,16 +113,15 @@ margin-right:10%;
     margin: 0 ;
     float: left;
 }
-</style>
 
 
-<style type="text/css">
 #labeler {
+        margin-top:100px;
 	width: 200px;
 	text-align: left;
 	margin-right: 80px ;
-	float: right;
 }
+
 </style>
 
 <style type="text/css">
@@ -145,9 +153,8 @@ margin-right:10%;
     }
     </style>
  
- </head>
  
- <body>
+<div id="smaPBV2">
 <!-- Javascript -->
 
 <script src="13cn.js"></script>
@@ -174,6 +181,16 @@ margin-right:10%;
 <script src="sis.js"></script>
 <script src="so.js"></script>
 <script src="so2.js"></script>
+<script src="hdo.js"></script>
+<script src="h13coplus.js"></script>
+<script src="hcoplus.js"></script>
+<script src="h13coplus.js"></script>
+<script src="h13cn.js"></script>
+<script src="hc15n.js"></script>
+<script src="hcn.js"></script>
+<script src="dcn.js"></script>
+<script src="c17o.js"></script>
+<script src="nh3.js"></script>
 <script src="orionSurvey2.js"></script>
 <script src="ircspectrum.js"></script>
 <script src="trans1mm.js"></script>
@@ -183,13 +200,17 @@ margin-right:10%;
 
 <script type="text/javascript">
 
-var loFreq=226.0;
-var lineFreq = 0.;
-var chunkWidth = 0.082878; 
-var flsbmin=loFreq-11.968;
-var flsbmax=loFreq-4.016;
-var fusbmin=loFreq+4.016;
-var fusbmax=loFreq+11.968;
+var c = 299792.458; // c in km/s
+var ifmax = 12.0;
+var ifmin = 4.0;
+var loFreq=225.497;
+var lineFreq = 230.538;
+var freqOffset = 0.0;
+var chunkWidth = 2.0; 
+var flsbmin=loFreq-ifmax;
+var flsbmax=loFreq-ifmin;
+var fusbmin=loFreq+ifmin;
+var fusbmax=loFreq+ifmax;
 var chunkLabel = new Array();
 var uchunkLabel = new Array();
 var receiver = "rx230";
@@ -200,17 +221,19 @@ var PLLharmonic=10.0;
 var fDDS = 0.109;
 var yigSpikestoPlot = [];
 var yigFrequency=0.0;
-
-
+var correlatorMode = "8GHzSingleRxMode";
+var gapBetweenS49S50Str = "";
+var userInputLOfreq=false;
+var velocity=0.0;
 
 var datasets = {
 		  "Atm Trans 1mmPWV": {label: "Atm Trans 1mmPWV",data:trans1mm,
           		  lines:{show:true},bars:{show:false}
 		        },
-		  "Atm Trans 2.5mmPWV": {label: "Atm Trans 2.5mmPWV",data:trans2p5mm,
+		  "Atm Trans 2.5mmPWV": {label: "Atm Trans 2.5 mm PWV",data:trans2p5mm,
           		  lines:{show:true},bars:{show:false}
 		        },
-		  "Atm Trans 4mmPWV": {label: "Atm Trans 4mmPWV",data:trans4mm,
+		  "Atm Trans 4mmPWV": {label: "Atm Trans 4mm PWV",data:trans4mm,
           		  lines:{show:true},bars:{show:false}
 		        },
 		  "Orion survey": {label: "Orion survey",data:orionSurvey,
@@ -219,64 +242,89 @@ var datasets = {
 		  "IRC+10216 survey ": {label: "IRC+10216 survey",data:irc10216Spectrum,
           		  lines:{show:true},bars:{show:false}
 		        },
+                  "SiS":  { label: "SiS",data:sis },
+                  "SiCC":  { label: "SiCC",data:sicc },
+                 "H2CO":    { label: "H<sub>2</sub>CO",data:h2co },
+                 "H213CO":    { label: "H<sub>2</sub><sup>13</sup>CO",data:h213co },
+                 "CH3OH":   { label: "CH<sub>3</sub>OH",data:ch3oh },
+		 "NH3":    { label: "NH<sub>3</sub>",data:nh3},
                  "CO": {label: "CO",data:co},
-		 "13CO": {label: "13CO", data: _13co},
-		 "C18O": {label: "C18O",data: c18o},
-		 "C17O": {label: "C17O",data: c17o},
-                 "CH3CN": { label: "CH3CN",data:ch3cn },
-                 "CH3OH":   { label: "CH3OH",data:ch3oh },
+		 "13CO": {label: "<sup>13</sup>CO", data: _13co},
+		 "C18O": {label: "C<sup>18</sup>O",data: c18o},
+		 "C17O": {label: "C<sup>17</sup>O",data: c17o},
+                 "CH3CN": { label: "CH<sub>3</sub>CN",data:ch3cn },
 		 "CN": {label: "CN", data: cn},
-                 "H2CO":    { label: "H2CO",data:h2co },
-                 "H2O":    { label: "H2O",data:h2o },
-                 "H213CO":    { label: "H213CO",data:h213co },
-                 "HC3N":    { label: "HC3N",data:hc3n },
-                 "N2H+":   { label: "N2H+",data:n2hplus },
-                 "N2D+":   { label: "N2D+",data:n2dplus },
+                 "H2O":    { label: "H<sub>2</sub>O",data:h2o },
+                 "HDO":    { label: "HDO",data:hdo },
+                 "HCO+":    { label: "HCO<sup>+</sup>",data:hcoplus },
+                 "H13CO+":    { label: "H<sup>13</sup>CO<sup>+</sup>",data:h13coplus },
+		 "HCN":     { label: "HCN",data:hcn },
+		 "DCN":     { label: "DCN",data:dcn },
+		 "H13CN":     { label: "H<sup>13</sup>CN",data:h13cn },
+		 "HC15N":     { label: "HC<sup>15</sup>N",data:hc15n },
+                 "HC3N":    { label: "HC<sub>3</sub>N",data:hc3n },
+                 "N2H+":   { label: "N<sub>2</sub>H<sup>+</sup>",data:n2hplus },
+                 "N2D+":   { label: "N<sub>2</sub>D<sup>+</sup>",data:n2dplus },
                   "CS":   { label: "CS",data:cs },
-                  "13CS":   { label: "13CS",data:cs },
+                  "13CS":   { label: "<sup>13</sup>CS",data:cs },
                   "SiO":  { label: "SiO",data:sio },
                   "SO":  { label: "SO",data:so },
-                  "SO2":  { label: "SO2",data:so2 },
-                  "SiS":  { label: "SiS",data:sis },
-                  "SiCC":  { label: "SiCC",data:sicc }
+                  "SO2":  { label: "SO<sub>2</sub>",data:so2 },
 		  };
 
-$(document).ready(function(){   
-
+$(document).ready(function(){
+var correlatorMode=$("#correlatorModeSelect").val();
 var receiver=$("#receiverSelect").val();
+var sideband=$("#sidebandSelect").val();
+var s=$("#chunkSelect").val();
+s=parseInt(s);
 
-       $("#receiverSelect").change( function(){ 
+       $("#correlatorModeSelect").change( function(){
+       correlatorMode=$(this).val();
+       if(correlatorMode=="8GHzSingleRxMode"){
+       ifmax = 12.0; 
+       }
+       if(correlatorMode=="6GHzDualRxMode"){
+       ifmax = 10.0; 
+       }
+       drawSpectra();
+       });
+
+
+       $("#receiverSelect").change( function(){
        receiver=$(this).val();
        if (receiver=="rx230"){
        gunnMult=2.0;
-       ofmin=180.;
-       ofmax=248.;
+       ofmin=182.;
+       ofmax=252.;
        loFreq=224.;
-       flsbmin=loFreq - 11.968;
-       flsbmax=loFreq - 4.016;
-       fusbmin=loFreq+ 4.016;
-       fusbmax=loFreq+11.968;
+       lineFreq=230.;
+       }
+       if (receiver=="rx240"){
+       gunnMult=2.0;
+       ofmin=198.;
+       ofmax=282.;
+       loFreq=234.;
+       lineFreq=240.;
        }
        if (receiver=="rx345"){
        gunnMult=3.0;
-       ofmin=265.5;
-       ofmax=355.5;
-       loFreq=339.;
-       flsbmin=loFreq - 11.968;
-       flsbmax=loFreq - 4.016;
-       fusbmin=loFreq+ 4.016;
-       fusbmax=loFreq+11.968;
+       ofmin=246.0;
+       ofmax=363.0;
+       loFreq=339.0;
+       lineFreq=345.;
        }
        if (receiver=="rx400"){
        gunnMult=4.0;
        ofmin=324.;
-       ofmax=426.;
-       loFreq=380.;
-       flsbmin=loFreq - 11.968;
-       flsbmax=loFreq - 4.016;
-       fusbmin=loFreq+ 4.016;
-       fusbmax=loFreq+11.968;
+       ofmax=432.;
+       loFreq=394.0;
+       lineFreq=400.;
        }
+       flsbmin=loFreq - ifmax;
+       flsbmax=loFreq - ifmin;
+       fusbmin=loFreq + ifmin;
+       fusbmax=loFreq + ifmax;
        drawSpectra();
        });
 
@@ -289,11 +337,10 @@ var receiver=$("#receiverSelect").val();
         ++i;
     });
 
-// 
     var choiceContainer = $("#choices");
     var itemPlot=0;
     $.each(datasets, function(key, val) {
-        if(itemPlot<5){
+        if(itemPlot<11){
         choiceContainer.append('<input type="checkbox" name="' + key +
                                '"id="id' + key + '">' +
                                '<label for="id' + key + '">'
@@ -308,8 +355,6 @@ var receiver=$("#receiverSelect").val();
     });
     choiceContainer.find("input").click(drawSpectra);
 
-function drawSpectra(){
-
 $("#inputLOfreq").numericInput({
 allowFloat: true,
 allowNegative: false
@@ -320,10 +365,22 @@ allowFloat: true,
 allowNegative: false
 });
 
-$("#inputPLLharmonic").numericInput({
+$("#inputFreqOffset").numericInput({
 allowFloat: true,
+allowNegative: true
+});
+
+$("#inputPLLharmonic").numericInput({
+allowFloat: false,
 allowNegative: false
 });
+
+$("#velocity").numericInput({
+allowFloat: true,
+allowNegative: true
+});
+
+function drawSpectra(){
 
 if (yigFrequency != 0.0) {
 yigSpikestoPlot=[];
@@ -332,17 +389,15 @@ yigSpikestoPlot.push([loFreq+yigFrequency,0.75]);
 }
 
 
-
-
 var linesToPlot=[];
         choiceContainer.find("input:checked").each(function () {
             var key = $(this).attr("name");
             if (key && datasets[key])
                 linesToPlot.push(datasets[key]);
         });
-linesToPlot.push({data:yigSpikestoPlot,label:"YIG",color:'#000000'});
+linesToPlot.push({data:yigSpikestoPlot,label:"YIG spur",color:'#000000'});
 
-
+if (correlatorMode=="8GHzSingleRxMode") {
     var options = {
         series: {
                    bars: { show: true, barWidth:0.0 },
@@ -353,32 +408,23 @@ linesToPlot.push({data:yigSpikestoPlot,label:"YIG",color:'#000000'});
                  function(){
                  var chunks = [];
                  chunks.push(
-                 {xaxis: {from:flsbmin, to:flsbmin+1.968},
+                 {xaxis: {from:flsbmin, to:flsbmin+2.0},
                         yaxis: {from: 0.0, to: 1.0},color: '#A0A0A0'}
                  );
                  chunks.push(
-                 {xaxis: {from:flsbmin+1.968, to:flsbmin+2*1.968},
+                 {xaxis: {from:flsbmin+2.0, to:flsbmin+4.0},
                         yaxis: {from: 0.0, to: 1.0},color: '#909090'}
                  );
-                 for (var x = 0; x<25; x+=1) {
-                  if (x%2==0) {var colorCode='#e0e0e0';}
-                  else {var colorCode='#d0d0d0';}
-                  chunks.push(
-                  {xaxis: {from:2*1.968+0.016+flsbmin+x*chunkWidth, 
-                                  to:2*1.968+0.016+flsbmin+(x+1)*chunkWidth}, 
-	         	yaxis: {from: 0.0, to: 1.0},color: colorCode}); 
-                  }
-                 for (var x = 24; x<49; x+=1) {
-                  if (x%2==0) {var colorCode='#e0e0e0';}
-                  else {var colorCode='#d0d0d0';}
-                  chunks.push(
-                  {xaxis: {from:0.032+2*1.968+0.016+flsbmin+x*chunkWidth, 
-                                  to:0.032+2*1.968+0.016+flsbmin+(x+1)*chunkWidth}, 
-	         	yaxis: {from: 0.0, to: 1.0},color: colorCode}); 
-                  }
+                 chunks.push(
+                 {xaxis: {from:flsbmin+4.0, to:flsbmin+6.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#A5A5A5'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:flsbmin+6.0, to:flsbmin+8.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#959595'}
+                 );
                  return chunks;
                  }
-
        },
 //       selection:{mode:"x"},
      legend: {
@@ -387,9 +433,10 @@ linesToPlot.push({data:yigSpikestoPlot,label:"YIG",color:'#000000'});
     position: "ne" 
         },
     pan: {interactive: true},
-    zoom: {interactive: true},
+    zoom: {interactive: false}, // turn this to true for dblclick/mouseWheel
     yaxis: {min: -0.1,max:1.2}
     }; //end of options
+
 
   var optionsusb = {
         series: {
@@ -399,53 +446,124 @@ linesToPlot.push({data:yigSpikestoPlot,label:"YIG",color:'#000000'});
        grid: {show: true, hoverable: true,clickable: true,
        markings: 
                  function(){
-                 var chunkWidth = 0.082666; 
                  var chunks = [];
 
-                 for (var x = 0; x<25; x+=1) {
-                  if (x%2==0) {var colorCode='#d0d0d0';}
-                  else {var colorCode='#e0e0e0';}
-                  chunks.push(
-                  {xaxis: {from:fusbmin+x*chunkWidth, 
-                                  to:fusbmin+(x+1)*chunkWidth}, 
-	         	yaxis: {from: 0.0, to: 1.0},color: colorCode}); 
-                  }
-
-                 for (var x = 24; x<49; x+=1) {
-                  if (x%2==0) {var colorCode='#d0d0d0';}
-                  else {var colorCode='#e0e0e0';}
-                  chunks.push(
-                  {xaxis: {from:0.032+fusbmin+x*chunkWidth, 
-                                  to:0.032+fusbmin+(x+1)*chunkWidth}, 
-	         	yaxis: {from: 0.0, to: 1.0},color: colorCode}); 
-                  }
-
                  chunks.push(
-                 {xaxis: {from:0.016+0.032+fusbmin+3.968,
-                                  to:0.016+0.032+fusbmin+3.968+1.968},
+                 {xaxis: {from:fusbmin,
+                                  to:fusbmin+2.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#959595'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:fusbmin+2.0,
+                                  to:fusbmin+4.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#A5A5A5'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:fusbmin+4.0,
+                                  to:fusbmin+6.0},
                         yaxis: {from: 0.0, to: 1.0},color: '#909090'}
                  );
                  chunks.push(
-                 {xaxis: {from:0.016+0.032+fusbmin+3.968+1.968,
-                                  to:0.016+0.032+fusbmin+3.968+2*1.968},
+                 {xaxis: {from:fusbmin+6.0,
+                                  to:fusbmin+8.0},
                         yaxis: {from: 0.0, to: 1.0},color: '#A0A0A0'}
                  );
                  return chunks;
                  }
                },
 //       selection:{mode:"x"},
-     legend: { container: $("#labeler"),noColumns:3},
+     legend: { container: $("#labeler"),noColumns:5},
     xaxis:{
        transform: function(v) {return -v;},
        inverseTransform: function(v) {return -v;}
     },
     pan: {interactive: true},
-    zoom: {interactive: true},
+    zoom: {interactive: false},
     yaxis: {min: -0.1,max:1.2}
     }; //end of optionsusb
 
+}// 8GHzSingleRxMode option 
 
-    var optionsOverview = {
+if (correlatorMode=="6GHzDualRxMode") {
+    var options = {
+        series: {
+                   bars: { show: true, barWidth:0.0 },
+		   points: {show: true, radius: 0},
+               },
+       grid: {show: true, hoverable: true,clickable: true,
+       markings: 
+                 function(){
+                 var chunks = [];
+                 chunks.push(
+                 {xaxis: {from:flsbmin, to:flsbmin+2.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#A0A0A0'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:flsbmin+2.0, to:flsbmin+4.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#909090'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:flsbmin+4.0, to:flsbmin+6.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#A5A5A5'}
+                 );
+                 return chunks;
+                 }
+       },
+//       selection:{mode:"x"},
+     legend: {
+    show: false,  
+    noColumns: 7,
+    position: "ne" 
+        },
+    pan: {interactive: true},
+    zoom: {interactive: false}, // turn this to true for dblclick/mouseWheel
+    yaxis: {min: -0.1,max:1.2}
+    }; //end of options
+
+
+  var optionsusb = {
+        series: {
+                   bars: { show: true, barWidth:0.0 },
+                   points: {show: true, radius: 0},
+               },
+       grid: {show: true, hoverable: true,clickable: true,
+       markings: 
+                 function(){
+                 var chunks = [];
+
+                 chunks.push(
+                 {xaxis: {from:fusbmin,
+                                  to:fusbmin+2.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#959595'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:fusbmin+2.0,
+                                  to:fusbmin+4.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#A5A5A5'}
+                 );
+                 chunks.push(
+                 {xaxis: {from:fusbmin+4.0,
+                                  to:fusbmin+6.0},
+                        yaxis: {from: 0.0, to: 1.0},color: '#909090'}
+                 );
+                 return chunks;
+                 }
+               },
+//       selection:{mode:"x"},
+     legend: { container: $("#labeler"),noColumns:5},
+    xaxis:{
+       transform: function(v) {return -v;},
+       inverseTransform: function(v) {return -v;}
+    },
+    pan: {interactive: true},
+    zoom: {interactive: false},
+    yaxis: {min: -0.1,max:1.2}
+    }; //end of optionsusb
+
+}// 6GHzDualRxMode option 
+
+
+var optionsOverview = {
         series: {
                    bars: { show: true },
                    points: {show: true, radius: 0},
@@ -465,7 +583,7 @@ linesToPlot.push({data:yigSpikestoPlot,label:"YIG",color:'#000000'});
         },
 	xaxis:{min: ofmin, max: ofmax},
 	yaxis:{min: 0, max: 1}
-    };
+};
 
 function showTooltip(x, y, contents) {
     $('<div id="tooltip">' + contents + '</div>').css({
@@ -477,13 +595,13 @@ function showTooltip(x, y, contents) {
         padding: '2px',     
         'background-color': '#fee',
         opacity: 0.80
-    }).appendTo("body").fadeIn(200);
+    }).appendTo("div#smaPBV2").fadeIn(200);
 }
    
     var previousPoint = null;
     $("#lsbplot").bind("plothover", function (event, pos, item) {
-        $("#x").text(pos.x.toFixed(2));
-        $("#y").text(pos.y.toFixed(2));
+        $("#x").text(pos.x.toFixed(3));
+        $("#y").text(pos.y.toFixed(3));
 
         if ($("#enableTooltip:checked").length > 0) {
             if (item) {
@@ -491,8 +609,8 @@ function showTooltip(x, y, contents) {
                     previousPoint = item.dataIndex;
                     
                     $("#tooltip").remove();
-                    var x = item.datapoint[0].toFixed(2),
-                        y = item.datapoint[1].toFixed(2);
+                    var x = item.datapoint[0].toFixed(3),
+                        y = item.datapoint[1].toFixed(3);
                     
                     showTooltip(item.pageX, item.pageY,
                                 item.series.label + " : " + x + " GHz " + "y:"+ y);
@@ -507,8 +625,8 @@ function showTooltip(x, y, contents) {
 
     var previousPoint = null;
     $("#usbplot").bind("plothover", function (event, pos, item) {
-        $("#x").text(pos.x.toFixed(2));
-        $("#y").text(pos.y.toFixed(2));
+        $("#x").text(pos.x.toFixed(3));
+        $("#y").text(pos.y.toFixed(3));
 
         if ($("#enableTooltip:checked").length > 0) {
             if (item) {
@@ -516,8 +634,8 @@ function showTooltip(x, y, contents) {
                     previousPoint = item.dataIndex;
                     
                     $("#tooltip").remove();
-                    var x = item.datapoint[0].toFixed(2),
-                        y = item.datapoint[1].toFixed(2);
+                    var x = item.datapoint[0].toFixed(3),
+                        y = item.datapoint[1].toFixed(3);
                     
                     showTooltip(item.pageX, item.pageY,
                                 item.series.label + " : " + x + " GHz " + "y:"+ y);
@@ -532,8 +650,8 @@ function showTooltip(x, y, contents) {
 
     var previousPoint = null;
     $("#overview").bind("plothover", function (event, pos, item) {
-        $("#x").text(pos.x.toFixed(2));
-        $("#y").text(pos.y.toFixed(2));
+        $("#x").text(pos.x.toFixed(3));
+        $("#y").text(pos.y.toFixed(3));
 
         if ($("#enableTooltip:checked").length > 0) {
             if (item) {
@@ -541,8 +659,8 @@ function showTooltip(x, y, contents) {
                     previousPoint = item.dataIndex;
                     
                     $("#tooltip").remove();
-                    var x = item.datapoint[0].toFixed(2),
-                        y = item.datapoint[1].toFixed(2);
+                    var x = item.datapoint[0].toFixed(3),
+                        y = item.datapoint[1].toFixed(3);
                     
                     showTooltip(item.pageX, item.pageY,
                                 item.series.label + " : " + x + " GHz");
@@ -614,17 +732,25 @@ function showTooltip(x, y, contents) {
                    $.extend(true,{},optionsOverview,{})
                   );
 
-    $('<div class="button" style="left:30px;top:20px">zoom out</div>').appendTo('#lsbplot').click(function (e) {
+    $('<div class="button" style="left:40px;top:5px">zoom in</div>').appendTo('#lsbplot').click(function (e) {
+        e.preventDefault();
+        plotlsb.zoom();
+    });
+    $('<div class="button" style="left:100px;top:5px">zoom out</div>').appendTo('#lsbplot').click(function (e) {
         e.preventDefault();
         plotlsb.zoomOut();
     });
 
-    $('<div class="button" style="left:30px;top:20px">zoom out</div>').appendTo('#usbplot').click(function (e) {
+    $('<div class="button" style="left:40px;top:5px">zoom in</div>').appendTo('#usbplot').click(function (e) {
+        e.preventDefault();
+        plotusb.zoom();
+    });
+    $('<div class="button" style="left:100px;top:5px">zoom out</div>').appendTo('#usbplot').click(function (e) {
         e.preventDefault();
         plotusb.zoomOut();
     });
 
-    // labeling the chunk numbers
+// labeling the chunk numbers
     function labelLSBchunks(plotlsb) {
 
     var o;
@@ -634,60 +760,32 @@ function showTooltip(x, y, contents) {
     var ymin = axes.yaxis.min;
     var ymax = axes.yaxis.max;
 
-    for(s=0;s<2;s+=1) {
+    if (correlatorMode=="8GHzSingleRxMode") {
+
+    for(s=0;s<4;s+=1) {
     $('#slabel'+s).remove();
-    if((s%2)==0){
-    o = plotlsb.pointOffset({x:((flsbmin+s*1.968)+( flsbmin+(s+1)*1.968))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotlsb.pointOffset({x:((flsbmin+s*1.968)+( flsbmin+(s+1)*1.968))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
-     }
+    o = plotlsb.pointOffset({x:((flsbmin+s*2.0)+( flsbmin+(s+1)*2.0))/2., 
+                              y:0.8*(ymax-ymin)+ymin});
     
-    chunkLabel[s]=$('<div id="slabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (50-s)+'</div>');
+    chunkLabel[s]=$('<div id="slabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:small;color:#FFFFFF">'+ (4-s)+'</div>');
     $('#lsbplot').append(chunkLabel[s]);
     }
 
-    for(s=2;s<26;s+=1) {
+    } 
 
-    // clear previous labels
+    if (correlatorMode=="6GHzDualRxMode") {
+
+    for(s=0;s<3;s+=1) {
     $('#slabel'+s).remove();
-
-    if((s%2)==0){
-    o = plotlsb.pointOffset({x:((flsbmin+0.016+2*1.968+(s-2)*chunkWidth)+(
-                               flsbmin+(s-1)*chunkWidth+0.016+2*1.968))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotlsb.pointOffset({x:((flsbmin+0.016+2*1.968+(s-2)*chunkWidth)+(
-                               flsbmin+(s-1)*chunkWidth+0.016+2*1.968))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
-      }
-
-    chunkLabel[s]=$('<div id="slabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (50-s)+'</div>');
-
+    o = plotlsb.pointOffset({x:((flsbmin+s*2.0)+( flsbmin+(s+1)*2.0))/2., 
+                              y:0.8*(ymax-ymin)+ymin});
+    
+    chunkLabel[s]=$('<div id="slabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:small;color:#FFFFFF">'+ (3-s)+'</div>');
     $('#lsbplot').append(chunkLabel[s]);
-     }
-
-    for(s=26;s<50;s+=1) {
-
-    // clear previous labels
-    $('#slabel'+s).remove();
-
-    if((s%2)==0){
-    o = plotlsb.pointOffset({x:((flsbmin+0.016+0.032+2*1.968+(s-2)*chunkWidth)+(
-                               flsbmin+(s-1)*chunkWidth+0.016+0.032+2*1.968))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotlsb.pointOffset({x:((flsbmin+0.016+0.032+2*1.968+(s-2)*chunkWidth)+(
-                               flsbmin+(s-1)*chunkWidth+0.016+0.032+2*1.968))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
     }
+   } 
 
-    chunkLabel[s]=$('<div id="slabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (50-s)+'</div>');
-
-    $('#lsbplot').append(chunkLabel[s]);
-     }
-    }
+   }// labelLSBchunks function
 
 
     function labelUSBchunks(plotusb) {
@@ -699,62 +797,36 @@ function showTooltip(x, y, contents) {
     var ymin = axes.yaxis.min;
     var ymax = axes.yaxis.max;
 
-    for(s=0;s<24;s+=1) {
-    $('#uslabel'+s).remove();
-    if((s%2)!=0){
-    o = plotusb.pointOffset({x:((fusbmin+s*chunkWidth)+(fusbmin+(s+1)*chunkWidth))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotusb.pointOffset({x:((fusbmin+s*chunkWidth)+(fusbmin+(s+1)*chunkWidth))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
-     }
-    
-    uchunkLabel[s]=$('<div id="uslabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (s+1)+'</div>');
-    $('#usbplot').append(uchunkLabel[s]);
-    }
-
-    for(s=24;s<48;s+=1) {
-
+    if (correlatorMode == "8GHzSingleRxMode") {
+    for(s=0;s<4;s+=1){
     // clear previous labels
     $('#uslabel'+s).remove();
 
-    if((s%2)!=0){
-    o = plotusb.pointOffset({x:((0.032+fusbmin+s*chunkWidth)+(
-                               fusbmin+(s+1)*chunkWidth+0.032))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotusb.pointOffset({x:((fusbmin+0.032+s*chunkWidth)+(
-                               fusbmin+(s+1)*chunkWidth+0.032))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
+    o = plotusb.pointOffset({x:((fusbmin+s*2.0)+(fusbmin+(s+1)*2.0))/2.,y:0.8*(ymax-ymin)+ymin});
+    uchunkLabel[s]=$('<div id="uslabel'+s+'" style= "position:absolute; left:' +
+    o.left + 'px; top:' + o.top + 'px;font-size:small;color:#FFFFFF">'+ (s+1)+'</div>');
+
+
+    $('#usbplot').append(uchunkLabel[s]);
+    }
+    } 
+
+    if (correlatorMode == "6GHzDualRxMode") {
+
+      for(s=0;s<3;s+=1){
+      // clear previous labels
+      $('#uslabel'+s).remove();
+
+      o = plotusb.pointOffset({x:((fusbmin+s*2.0)+(fusbmin+(s+1)*2.0))/2.,y:0.8*(ymax-ymin)+ymin});
+      uchunkLabel[s]=$('<div id="uslabel'+s+'" style= "position:absolute; left:' +
+      o.left + 'px; top:' + o.top + 'px;font-size:small;color:#FFFFFF">'+ (s+1)+'</div>');
+
+
+      $('#usbplot').append(uchunkLabel[s]);
       }
+    } 
 
-    uchunkLabel[s]=$('<div id="uslabel'+s+'" style= "position:absolute; left:' + o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (s+1)+'</div>');
-
-    $('#usbplot').append(uchunkLabel[s]);
-     }
-
-
-    for(s=0;s<2;s+=1){
-    // clear previous labels
-    $('#uslabel'+s+48).remove();
-
-    if((s%2)!=0) {
-    o = plotusb.pointOffset({x:((fusbmin+0.016+0.032+3.968+s*1.968)+(
-                               fusbmin+0.016+0.032+3.968+(s+1)*1.968))/2., 
-                              y:0.9*(ymax-ymin)+ymin});
-			      } else {
-    o = plotusb.pointOffset({x:((fusbmin+0.016+0.032+3.968+s*1.968)+(
-                               fusbmin+0.016+0.032+3.968+(s+1)*1.968))/2., 
-                              y:0.85*(ymax-ymin)+ymin});
-    }
-    uchunkLabel[s+48]=$('<div id="uslabel'+s+48+'" style= "position:absolute; left:' +
-    o.left + 'px; top:' + o.top + 'px;font-size:xx-small;">'+ (s+49)+'</div>');
-
-
-    $('#usbplot').append(uchunkLabel[s+48]);
-    }
-
-    }
+   } // function labelUSBchunks
 
     labelUSBchunks(plotusb);
 
@@ -777,15 +849,54 @@ function showTooltip(x, y, contents) {
     labelLSBchunks(plotlsb);
     });
 
+
 } // end of function drawSpectra()
 
+// Plot with default selected and initialized values
+       if(correlatorMode=="8GHzSingleRxMode"){ ifmax = 12.0; }
+       if(correlatorMode=="6GHzDualRxMode"){ ifmax = 10.0; }
 
+       if (receiver=="rx230"){
+       gunnMult=2.0;
+       ofmin=182.;
+       ofmax=252.;
+       loFreq=224.;
+       }
+       if (receiver=="rx240"){
+       gunnMult=2.0;
+       ofmin=198.;
+       ofmax=282.;
+       loFreq=234.;
+       }
+       if (receiver=="rx345"){
+       gunnMult=3.0;
+       ofmin=246.0;
+       ofmax=363.0;
+       loFreq=339.;
+       }
+       if (receiver=="rx400"){
+       gunnMult=4.0;
+       ofmin=324.;
+       ofmax=432.;
+       loFreq=394.;
+       }
+       flsbmin=loFreq - ifmax;
+       flsbmax=loFreq - ifmin;
+       fusbmin=loFreq + ifmin;
+       fusbmax=loFreq + ifmax;
+yigFreq();
 drawSpectra();
+defaultPlot();
 
 $("#inputPLLharmonic").keydown(function(e){
     if(e.keyCode==13){
     PLLharmonic=parseFloat($(this).val());
-    yigFrequency();
+    yigFreq();
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
+    
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
     drawSpectra();
     }
 });
@@ -795,56 +906,32 @@ $("#inputLOfreq").keydown(function(e){
 
     loFreq=parseFloat($(this).val());
 
-    flsbmin=loFreq - 11.968;
-    flsbmax=loFreq - 4.016;
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
     
-    fusbmin=loFreq+ 4.016;
-    fusbmax=loFreq+11.968;
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
+  
+    lineFreq = loFreq + 6.0;
+    sideband = "usb";
 
+    userInputLOfreq=true;
     drawSpectra();
-    }
-
-    if(e.keyCode==190){
-
-    loFreq=parseFloat($(this).val());
-    loFreq += 0.1;
-    $('#inputLOfreq').val(loFreq);
-
-    flsbmin=loFreq - 11.968;
-    flsbmax=loFreq - 4.016;
-    
-    fusbmin=loFreq+ 4.016;
-    fusbmax=loFreq+11.968;
-
-    drawSpectra();
-    }
-
-    if(e.keyCode==188){
-
-    loFreq=parseFloat($(this).val());
-    loFreq -= 0.1;
-    $('#inputLOfreq').val(loFreq);
-
-    flsbmin=loFreq - 11.968;
-    flsbmax=loFreq - 4.016;
-    
-    fusbmin=loFreq+ 4.016;
-    fusbmax=loFreq+11.968;
-
-    drawSpectra();
+    updateCommands();
     }
 
     if(e.keyCode==38){
 
     loFreq=parseFloat($(this).val());
     loFreq += 1.0;
+//    loFreq = loFreq.toFixed(4);
     $('#inputLOfreq').val(loFreq);
 
-    flsbmin=loFreq - 11.968;
-    flsbmax=loFreq - 4.016;
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
     
-    fusbmin=loFreq+ 4.016;
-    fusbmax=loFreq+11.968;
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
 
     drawSpectra();
     }
@@ -853,65 +940,217 @@ $("#inputLOfreq").keydown(function(e){
 
     loFreq=parseFloat($(this).val());
     loFreq -= 1.0;
+//    loFreq = loFreq.toFixed(4);
     $('#inputLOfreq').val(loFreq);
 
-    flsbmin=loFreq - 11.968;
-    flsbmax=loFreq - 4.016;
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
     
-    fusbmin=loFreq+ 4.016;
-    fusbmax=loFreq+11.968;
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
 
     drawSpectra();
     }
+  
 });
 
 $("#inputLinefreq").keypress(function(e){
-if(e.keyCode==13){
-lineFreq=parseFloat($(this).val());
-var s=$("#chunkSelect").val();
-s=parseInt(s);
-var sideband=$("#sidebandSelect").val();
+    if(e.keyCode==13){
+    lineFreq=parseFloat($(this).val());
+    freqOffset=parseFloat($("#inputFreqOffset").val());
+    lineFreq = lineFreq + freqOffset;
+    var receiver=$("#receiverSelect").val();
 
-    if(sideband=="lsb") {
-     if ((s>=1)&&(s<25)) {
-       loFreq = lineFreq + (s-1)*chunkWidth + chunkWidth/2.0 + 4.016;
-       }
-     if ((s>=25)&&(s<49)) {
-       loFreq = lineFreq + (s-1)*chunkWidth + chunkWidth/2.0 + 0.032+ 4.016;
-       }
-     if ((s>=49)&&(s<51)) {
-       loFreq = lineFreq + (s-48)*1.968 + 1.968/2.0 + 0.016+0.032+ 2*4.016;
-       }
+   if (receiver=="rx230"){
+      if(lineFreq<182.0 || lineFreq >252.) {
+      alert("The tuning range of the 230 GHz receiver is 182 to 252 GHz.");
+      lineFreq=230.0
+      return;
+      }
+   }
+   if (receiver=="rx240"){
+      if(lineFreq<198.0 || lineFreq >282.) {
+      alert("The tuning range of the 240 GHz receiver is 198 to 282 GHz.");
+      lineFreq=240.0
+      return;
+      }
+   }
+   if (receiver=="rx345"){
+      if(lineFreq<246.0 || lineFreq >363.) {
+      alert("The tuning range of the 345 GHz receiver is 246 to 363 GHz.");
+      lineFreq=345.0;
+      return;
+      }
+   }
+   if (receiver=="rx400"){
+      if(lineFreq<324.0 || lineFreq >432.) {
+      alert("The tuning range of the 400 GHz receiver is 324 to 432 GHz.");
+      lineFreq=400.;
+      return;
+      }
+   }
+
+    
+    var s=$("#chunkSelect").val();
+    s=parseInt(s);
+    var sideband=$("#sidebandSelect").val();
+
+    calculateLoFreq(s);
+
+//    loFreq=loFreq.toFixed(4);
+    $('#inputLOfreq').val(loFreq);
+
+
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
+
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
+
+    $('#inputPLLharmonic').val(PLLharmonic);
+    yigFreq();
+
+    userInputLOfreq=false;
+
+    drawSpectra();
+    updateCommands();
+   
+
     }
-
-    if(sideband=="usb") {
-     if ((s>=1)&&(s<25)) {
-       loFreq = lineFreq - (s-1)*chunkWidth - chunkWidth/2.0 - 4.016;
-       }
-     if ((s>=25)&&(s<49)) {
-       loFreq = lineFreq - (s-1)*chunkWidth - chunkWidth/2.0 - 0.032- 4.016;
-       }
-     if ((s>=49)&&(s<51)) {
-       loFreq = lineFreq - (s-48)*1.968 - 1.968/2.0 - 0.016-0.032- 2*4.016;
-       }
-    }
-
-$('#inputLOfreq').val(loFreq);
-
-
-flsbmin=loFreq - 11.968;
-flsbmax=loFreq - 4.016;
-
-fusbmin=loFreq+ 4.016;
-fusbmax=loFreq+11.968;
-
-$('#inputPLLharmonic').val(PLLharmonic);
-yigFreq();
-
-drawSpectra();
-
-}
 });
+
+$("#inputFreqOffset").keydown(function(e){
+    if(e.keyCode==13){
+    lineFreq=parseFloat($("inputLinefreq").val());
+    freqOffset=parseFloat($("#inputFreqOffset").val());
+//    freqOffset=freqOffset.toFixed(4);
+    }
+
+    if(e.keyCode==38){
+    lineFreq=parseFloat($("inputLinefreq").val());
+    freqOffset=parseFloat($("#inputFreqOffset").val());
+    freqOffset += 0.01;
+//    freqOffset=freqOffset.toFixed(4);
+    $('#inputFreqOffset').val(freqOffset);
+    }
+
+    if(e.keyCode==40){
+    lineFreq=parseFloat($("inputLinefreq").val());
+    freqOffset=parseFloat($("#inputFreqOffset").val());
+    freqOffset -= 0.01;
+//    freqOffset=freqOffset.toFixed(4);
+    $('#inputFreqOffset').val(freqOffset);
+    }
+
+    lineFreq = lineFreq + freqOffset;
+    var receiver=$("#receiverSelect").val();
+
+   if (receiver=="rx230"){
+      if(lineFreq<182.0 || lineFreq >252.) {
+      alert("The tuning range of the 230 GHz receiver is 182 to 252 GHz.");
+      lineFreq=230.0
+      return;
+      }
+   }
+   if (receiver=="rx240"){
+      if(lineFreq<198.0 || lineFreq >282.) {
+      alert("The tuning range of the 240 GHz receiver is 198 to 282 GHz.");
+      lineFreq=240.0
+      return;
+      }
+   }
+   if (receiver=="rx345"){
+      if(lineFreq<246.0 || lineFreq >363.) {
+      alert("The tuning range of the 345 GHz receiver is 246 to 363 GHz.");
+      lineFreq=345.0;
+      return;
+      }
+   }
+   if (receiver=="rx400"){
+      if(lineFreq<324.0 || lineFreq >432.) {
+      alert("The tuning range of the 400 GHz receiver is 324 to 432 GHz.");
+      lineFreq=400.;
+      return;
+      }
+   }
+
+    
+    var s=$("#chunkSelect").val();
+    s=parseInt(s);
+    var sideband=$("#sidebandSelect").val();
+
+    calculateLoFreq(s);
+
+//    loFreq=loFreq.toFixed(4);
+    $('#inputLOfreq').val(loFreq);
+
+
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
+
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
+
+    $('#inputPLLharmonic').val(PLLharmonic);
+    yigFreq();
+
+    userInputLOfreq=false;
+
+    drawSpectra();
+    updateCommands();
+});
+
+$("#velocity").keydown(function(e){
+    if(e.keyCode==13){
+    velocity = parseFloat($("#velocity").val());
+
+    var s=$("#chunkSelect").val();
+    s=parseInt(s);
+    var sideband=$("#sidebandSelect").val();
+
+    calculateLoFreq(s);
+
+    $('#inputLOfreq').val(loFreq);
+
+
+    flsbmin=loFreq - ifmax;
+    flsbmax=loFreq - ifmin;
+
+    fusbmin=loFreq + ifmin;
+    fusbmax=loFreq + ifmax;
+
+    $('#inputPLLharmonic').val(PLLharmonic);
+    yigFreq();
+
+    userInputLOfreq=false;
+
+    drawSpectra();
+    updateCommands();
+    }
+});
+
+function updateCommands() {
+    var dopplerTrackCmd = document.getElementById("dopplerTrack");
+    var setFeedOffsetCmd = document.getElementById("setFeedOffset");
+    var showLineFreq = parseFloat($("#inputLinefreq").val());
+    var sideband=$("#sidebandSelect").val();
+    var s=$("#chunkSelect").val();
+    freqOffset = freqOffset.toFixed(4);
+    dopplerTrackCmd.innerHTML="tuning: " + showLineFreq +", sideband: "+ sideband + ", band: " +  "s"+s + ", offset: "+ freqOffset;
+//    if (sideband=="lsb") {
+//    dopplerTrackCmd.innerHTML="dopplerTrack -r " + showLineFreq +" -l "+ "s"+s + " -f "+ freqOffset;
+//    }
+//    if (sideband=="usb") {
+//    dopplerTrackCmd.innerHTML="dopplerTrack -r " + showLineFreq +" -u "+ "s"+s + " -f "+ freqOffset;
+//    }
+//    if (userInputLOfreq==true) {
+//    dopplerTrackCmd.innerHTML="dopplerTrack -r " + showLineFreq +" -u " +" -f "+ freqOffset;
+//    }
+//  if (receiver=="rx230") setFeedOffsetCmd.innerHTML="setFeedOffset -f 230";
+//  if (receiver=="rx240") setFeedOffsetCmd.innerHTML="setFeedOffset -f 240";
+//  if (receiver=="rx345") setFeedOffsetCmd.innerHTML="setFeedOffset -f 345";
+//  if (receiver=="rx400") setFeedOffsetCmd.innerHTML="setFeedOffset -f 400";
+}
 
 function yigFreq() {
 
@@ -929,6 +1168,71 @@ function yigFreq() {
      }
 }
 
+function calculateLoFreq(s) {
+lineFreq=parseFloat($("#inputLinefreq").val());
+freqOffset=parseFloat($("#inputFreqOffset").val());
+lineFreq = lineFreq + freqOffset;
+lineFreq = lineFreq - (lineFreq * velocity / c);
+var s=$("#chunkSelect").val();
+s=parseFloat(s);
+var sideband=$("#sidebandSelect").val();
+
+
+    if(sideband=="lsb") {
+       loFreq = lineFreq + (s-1)*chunkWidth + chunkWidth/2.0 + ifmin;
+    }
+
+    if(sideband=="usb") {
+       loFreq = lineFreq - (s-1)*chunkWidth - chunkWidth/2.0 - ifmin;
+    }
+
+}
+
+var element=document.getElementById("updateplot");
+element.onclick=function(){
+lineFreq=parseFloat($("#inputLinefreq").val());
+freqOffset=parseFloat($("#inputFreqOffset").val());
+lineFreq = lineFreq + freqOffset;
+var s=$("#chunkSelect").val();
+s=parseInt(s);
+var sideband=$("#sidebandSelect").val();
+
+calculateLoFreq(s);
+
+//loFreq = loFreq.toFixed(4);
+$('#inputLOfreq').val(loFreq);
+
+flsbmin=loFreq - ifmax;
+flsbmax=loFreq - ifmin;
+fusbmin=loFreq + ifmin;
+fusbmax=loFreq + ifmax;
+yigFreq();
+userInputLOfreq=false;
+drawSpectra();
+updateCommands();
+}
+
+
+function defaultPlot(){
+lineFreq=parseFloat($("#inputLinefreq").val());
+freqOffset=parseFloat($("#inputFreqOffset").val());
+lineFreq = lineFreq + freqOffset;
+var s=$("#chunkSelect").val();
+s=parseInt(s);
+var sideband=$("#sidebandSelect").val();
+
+calculateLoFreq(s);
+
+//loFreq = loFreq.toFixed(4);
+$('#inputLOfreq').val(loFreq);
+
+flsbmin=loFreq - ifmax;
+flsbmax=loFreq - ifmin;
+fusbmin=loFreq + ifmin;
+fusbmax=loFreq + ifmax;
+yigFreq();
+drawSpectra();
+}
 
 }); //document ready function (MAIN)
 
@@ -946,103 +1250,112 @@ function yigFreq() {
 <!-- HTML -->
 <header>
 <h1><img src="/images/logo_small.jpg">SMA Passband Visualizer</h1>
-<div id="instructions">Select (1) the band  (230/345/400 GHz), (2) sideband
-(LSB/USB), (3) spectral window for the legacy correlator (S1-S48) for the line to
-appear in, and (4) enter the line frequency in GHz. The plots will refresh if you
-hit enter in the input window.
-The LO frequency will be updated. Alternatively, you can also enter the LO frequency. The top slim
-figure shows an overview of the full tuning range for the selected band. The
-sidebands are highlighted. Spectral lines are shown as vertical  lines (y: 0 to
-0.5) with various colors. Placing the mouse cursor on the tip of these lines will
-show the molecule name and rest frequency of that line. Zooming is enabled by
-double-clicking in the spectrum window (original scale can be reset by
-re-entering the LO frequency or line frequency). Spectral plots can also be
-panned by just dragging with the mouse. <br><br>
-YIG spikes are shown in black, with yaxis values of 0.75. The default PLL harmonic is shown for a given tuning, but this can be varied to move the YIG spike.<br><br>
-Note that the spectral plots update only on hitting return with the mouse cursor in the line frequency window. <br><br>
-Please send comments and bug-reports to Nimesh Patel (npatel[at]cfa.harvard.edu).
-</div>
-</header>
+<div id="instructions">Instructions: <p> (1) Select the correlator mode
+(Single Receiver 8 GHz bw or Dual Receiver / Full polarization 6GHz bw). 
+<br> 
+(2) Select the receiver (230/240/345/400 GHz). <br> 
+(3) Select the sideband (LSB/USB). <br> 
+(4) Select the spectral window for the SWARM correlator (S1-S4) 
+in which the line center should appear. <br> 
+(5) Enter the line frequency in GHz.  The plots will refresh if you hit enter in the line frequency input window
+(or click the Update Plot button).
+The LO frequency will be updated. <br>
+(6) You can position the line away from the center of the chunk by giving a frequency offset (use the up/down arrow keys with the cursor in the frequency offset input box to change the value in units of 10 MHz).<br> 
+
 <p>
-<div><input id="enableTooltip" type="checkbox" checked>Show molecule ID</div>
-<div id="choices">Show:</div>
-<div id="hoverdata">Cursor frequency (GHz): <span id="x">0</span>. <span
-id="clickdata"></span></div>
+The top panel in the figure shows an overview of the full tuning range for
+the selected band. The lower and upper sidebands are highlighted in yellow. 
+Spectral lines are shown as vertical  lines  with various colors.
+Placing the mouse cursor on the tip of these lines will show the
+molecule name and rest frequency of that line.  The spectral coverage of each
+sideband is shown in the lower two panels. Clicking on the tip
+of a spectral line will pop-up a new webpage with link to Splatalogue, with
+details about that line and other lines in nearby frequencies. Plots
+can be zoomed in or out by clicking on zoom buttons on top left
+corner.  The original scale can be reset by either clicking the
+Update Plot button or just hitting enter in the Line frequency or
+LO frequency boxes. Spectral plots can also be panned by 
+dragging with the mouse. 
+<p>
+YIG spikes are shown in black, with
+yaxis values of 0.75. The default PLL harmonic is shown for a given
+tuning, but this can be varied to move the YIG spike. The PLL harmonic
+should always be an even integer, in increments of 2,  
+with the highest value of 22. 
+<p> 
+Please send comments
+and bug-reports to Nimesh Patel (npatel[at]cfa.harvard.edu) (Last
+updated: 18 July 2016).  </div> </header> 
+<p> 
+<div> Select Correlator
+mode: <select id="correlatorModeSelect" name="correlatorModeSelect">
+     <option value="8GHzSingleRxMode" selected="selected">8 GHz Single Rx mode </option>
+     <option value="6GHzDualRxMode">6 GHz Dual Rx / Full polarization mode </option>
+</select> </div> 
+
+<!--
+<p style="color:orange"> 
+Note: For SWARM + ASIC, only 7.6 GHz mode is available in the upcoming (15 May - 15 Nov 2016) semester.
+<p>
+-->
+
 <select id="receiverSelect" name="receiverSelect">
-     <option value="rx230">Receiver: 230 GHz</option>
+     <option value="rx230" selected="selected">Receiver: 230 GHz</option> 
+     <option value="rx240" >Receiver: 240 GHz</option> 
      <option value="rx345">Receiver: 345 GHz</option>
      <option value="rx400">Receiver: 400 GHz</option>
-</select>
-<select id="sidebandSelect" name="sidebandSelect">
-     <option value="lsb">LSB</option>
-     <option value="usb">USB</option>
-</select>
-<select id="chunkSelect" name="chunkSelect">
-     <option value="1">S1</option>
-     <option value="2">S2</option>
-     <option value="3">S3</option>
-     <option value="4">S4</option>
-     <option value="5">S5</option>
-     <option value="6">S6</option>
-     <option value="7">S7</option>
-     <option value="8">S8</option>
-     <option value="9">S9</option>
-     <option value="10">S10</option>
-     <option value="11">S11</option>
-     <option value="12">S12</option>
-     <option value="13">S13</option>
-     <option value="14">S14</option>
-     <option value="15">S15</option>
-     <option value="16">S16</option>
-     <option value="17">S17</option>
-     <option value="18">S18</option>
-     <option value="19">S19</option>
-     <option value="20">S20</option>
-     <option value="21">S21</option>
-     <option value="22">S22</option>
-     <option value="23">S23</option>
-     <option value="24">S24</option>
-     <option value="25">S25</option>
-     <option value="26">S26</option>
-     <option value="27">S27</option>
-     <option value="28">S28</option>
-     <option value="29">S29</option>
-     <option value="30">S30</option>
-     <option value="31">S31</option>
-     <option value="32">S32</option>
-     <option value="33">S33</option>
-     <option value="34">S34</option>
-     <option value="35">S35</option>
-     <option value="36">S36</option>
-     <option value="37">S37</option>
-     <option value="38">S38</option>
-     <option value="39">S39</option>
-     <option value="40">S40</option>
-     <option value="41">S41</option>
-     <option value="42">S42</option>
-     <option value="43">S43</option>
-     <option value="44">S44</option>
-     <option value="45">S45</option>
-     <option value="46">S46</option>
-     <option value="47">S47</option>
-     <option value="48">S48</option>
-     <option value="49">S49</option>
-     <option value="50">S50</option>
-</select>
-<div id="lineInput">
-Line frequency (GHz):<input id="inputLinefreq" name="inputLine" type="text"></input>
-</div>
+</select> <select id="sidebandSelect" name="sidebandSelect">
+     <option value="lsb">LSB</option> <option value="usb"
+     selected="selected">USB</option>
+</select> <select id="chunkSelect" name="chunkSelect">
+     <option value="1">S1</option> <option value="2">S2</option>
+     <option value="3">S3</option> <option value="4">S4</option>
+</select> <button id="updateplot">Update Plot</button> 
+<p>
 
-<div id="loInput">
-LO frequency (GHz):<input id="inputLOfreq" name="inputLO" type="text"></input>
-</div>
-<div id="pllHarmInput">
-PLL harmonic: <input id="inputPLLharmonic" name="inputPLL" type="text"></input>
-</div>
+
+
+
+<span id="lineInput"> Line frequency (GHz): <input id="inputLinefreq"
+name="inputLine" type="text" value="230.538" size="8px"></input> </span>
+
+<!--
+
+<span id="inputVelocity" style="padding-left:50px"> Target velocity (km/s): <input
+id="velocity" name="inputVelocity" type="text" value="0.0" size = "8px">
+</input> </span>
+
+-->
+
+<span id="FreqOffset" style="padding-left:50px"> frequency offset
+(GHz): <input id="inputFreqOffset" name="inputFreqOffset" type="text"
+value="0.0" size = "8px"></input> </span>
+
+<p>
+
+<span id="loInput">
+LO frequency (GHz): <input id="inputLOfreq" name="inputLO" type="text" value="225.497" size="8px"></input>
+</span>
+
+<span id="pllHarmInput" style="padding-left:50px">
+PLL harmonic: <input id="inputPLLharmonic" name="inputPLL" type="text"
+value="10" size="4px"></input>
+</span>
+<p>
+
+<div><input id="enableTooltip" type="checkbox" checked>Show molecule ID</div>
+<div id="choices">Show:</div>
+<p>
+<div id="hoverdata">Cursor frequency (GHz): <span id="x">0</span>. <span
+id="clickdata"></span></div>
+<p>
+Use the following information for the tuning setup in the time request section of your proposal. <br><font size="-1">(Note that the target velocity is specified along with the source coordinates, and is not part of the receiver tuning setup).</font>
+<p>
+<div class="cmdfont" id="dopplerTrack"></div>
+<br>
 <div id="overview"></div>
 <div id="usbplot"></div>
 <div id="lsbplot"></div>
 <div id="labeler"></div>
 
-</body>
-</html>
+</div>
