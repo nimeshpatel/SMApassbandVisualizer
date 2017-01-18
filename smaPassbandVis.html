@@ -44,6 +44,14 @@ font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', 'Lucida Typewrite
 font-size: 18;
 }
 
+.plotTitle {
+font-size: 9;
+font-family: helvetica;
+color: blue;
+text-align: center;
+margin-top:5px;
+}
+
 .xaxisLabel {
     left: 0;
     right:0;
@@ -517,7 +525,7 @@ linesToPlot.push({data:loSpikestoPlotRxB,label:"LO spur",color:'#f10cf5'});
                  var chunks = [];
                  chunks.push(
                  {xaxis: {from:flsbminRxA, to:flsbminRxA+2.0},
-                        yaxis: {from: 0.0, to: 1.0},color: '#A0A0A0'}
+                        yaxis: {from: 0.0, to: 1.0},color:'#A0A0A0'}
                  );
                  chunks.push(
                  {xaxis: {from:flsbminRxA+2.0, to:flsbminRxA+4.0},
@@ -686,8 +694,10 @@ var optionsOverviewRxA = {
                   { xaxis: {from:flsbminRxA, to:flsbmaxRxA},color:'#f7c510'},
                   {xaxis: {from: fusbminRxA, to: fusbmaxRxA},color:'#f7c510'},
                   {xaxis: {from: loFreqRxA, to: loFreqRxA},color:'#000000'},
-                  { xaxis: {from:flsbminRxB, to:flsbmaxRxB},color:'#f8790a'},
-                  {xaxis: {from: fusbminRxB, to: fusbmaxRxB},color:'#f8790a'},
+                  { xaxis: {from:flsbminRxB,
+to:flsbmaxRxB},color:'#f8790a',opacity:0.1},
+                  {xaxis: {from: fusbminRxB, to:
+fusbmaxRxB},color:'#f8790a',opacity:0.1},
                   {xaxis: {from: loFreqRxB, to: loFreqRxB},color:'#000000'},
                   ]
        },
@@ -949,6 +959,11 @@ function showTooltip(x, y, contents) {
                    $.extend(true,{},optionsOverviewRxA,{
                                  yaxis: {show: false}
                   }));
+
+$('<div class="plotTitle">RxA LSB</div>').appendTo('#lsbplotRxA');
+$('<div class="plotTitle">RxA USB</div>').appendTo('#usbplotRxA');
+$('<div class="plotTitle">RxB LSB</div>').appendTo('#lsbplotRxB');
+$('<div class="plotTitle">RxB USB</div>').appendTo('#usbplotRxB');
 
     $('<div class="button" style="left:40px;top:5px">zoom in</div>').appendTo('#lsbplotRxA').click(function (e) {
         e.preventDefault();
