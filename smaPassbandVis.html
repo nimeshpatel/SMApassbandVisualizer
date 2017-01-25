@@ -488,7 +488,9 @@ function drawSpectra(){
 loSpikestoPlotRxA=[];
 loSpikestoPlotRxB=[];
 loSpikestoPlotRxA.push([loFreqRxB,1.10]);
+loSpikestoPlotRxA.push([loFreqRxB-16.,1.10]);
 loSpikestoPlotRxB.push([loFreqRxA,1.10]);
+loSpikestoPlotRxB.push([loFreqRxA+16.,1.10]);
 
 if (yigFrequencyRxA != 0.0) {
 yigSpikestoPlotRxA=[];
@@ -1199,7 +1201,7 @@ $("#inputLOfreqRxA").keydown(function(e){
     fusbminRxA=loFreqRxA + ifmin;
     fusbmaxRxA=loFreqRxA + ifmax;
   
-    lineFreqRxA = loFreqRxA + 6.0;
+    lineFreqRxA = loFreqRxA + 8.0;
     sidebandRxA = "usb";
 
     userInputLOfreqRxA=true;
@@ -1253,7 +1255,7 @@ $("#inputLOfreqRxB").keydown(function(e){
     fusbminRxB=loFreqRxB + ifmin;
     fusbmaxRxB=loFreqRxB + ifmax;
   
-    lineFreqRxB = loFreqRxB + 6.0;
+    lineFreqRxB = loFreqRxB + 8.0;
     sidebandRxB = "usb";
 
     userInputLOfreqRxB=true;
